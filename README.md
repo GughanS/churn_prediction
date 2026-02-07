@@ -66,8 +66,8 @@ Payload:
 Response:
 ```
 {
-  "prediction": "Churn",
-  "probability": 0.85,
-  "risk_level": "High"
+  "prediction": "No Churn",
+  "probability": 0.13,
+  "risk_level": "Low"
 }
 ```
