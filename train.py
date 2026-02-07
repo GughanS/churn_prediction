@@ -15,8 +15,8 @@ MODEL_PATH = 'model.pkl'
 META_PATH = 'model_features.json'
 TARGET_COLUMN = 'Churn Value'
 
-# Define the exact features we want to use (Validation consistency)
-SELECTED_FEATURES = [
+# The exact names we WANT to use in our API
+REQUIRED_FEATURES = [
     'tenure', 
     'MonthlyCharges', 
     'TotalCharges', 
@@ -27,7 +27,7 @@ SELECTED_FEATURES = [
 # --- 1. Data Loading ---
 if not os.path.exists(DATA_PATH):
     print(f"[WARN] {DATA_PATH} not found. Generating dummy data...")
-    os.makedirs(os.path.dirname(DATA_PATH), exist_ok=True)
+    # Generate dummy data with correct columns
     df = pd.DataFrame({
         'tenure': np.random.randint(1, 72, 100),
         'MonthlyCharges': np.random.uniform(20, 120, 100),
@@ -38,41 +38,56 @@ if not os.path.exists(DATA_PATH):
     })
 else:
     df = pd.read_csv(DATA_PATH)
+    print(f"DEBUG: Original columns in CSV: {list(df.columns)}")
 
-# --- 2. Preprocessing ---
-# Clean Target
+# --- 2. Smart Column Normalization ---
+# This fixes "Tenure" vs "tenure" mismatches
+df.columns = [c.strip() for c in df.columns] # Remove spaces
+col_map = {c.lower(): c for c in df.columns}
+
+# Fix Features
+for req in REQUIRED_FEATURES:
+    if req not in df.columns:
+        # Check if it exists in a different case
+        if req.lower() in col_map:
+            actual_name = col_map[req.lower()]
+            print(f"[INFO] Renaming '{actual_name}' to '{req}'")
+            df.rename(columns={actual_name: req}, inplace=True)
+
+# Fix Target
 if TARGET_COLUMN not in df.columns:
-    # Handle capitalization mismatch (e.g., 'churn' vs 'Churn')
-    cols_lower = {c.lower(): c for c in df.columns}
-    if TARGET_COLUMN.lower() in cols_lower:
-        TARGET_COLUMN = cols_lower[TARGET_COLUMN.lower()]
-    else:
-        raise ValueError(f"Target column '{TARGET_COLUMN}' not found.")
+    if TARGET_COLUMN.lower() in col_map:
+        actual_name = col_map[TARGET_COLUMN.lower()]
+        print(f"[INFO] Renaming target '{actual_name}' to '{TARGET_COLUMN}'")
+        df.rename(columns={actual_name: TARGET_COLUMN}, inplace=True)
+
+# --- 3. Final Validation ---
+missing_feats = [col for col in REQUIRED_FEATURES if col not in df.columns]
+if missing_feats:
+    print(f"[ERROR] Still missing columns after normalization: {missing_feats}")
+    print(f"Available columns: {list(df.columns)}")
+    raise ValueError("Dataset schema mismatch")
+
+# Select and Clean
+X = df[REQUIRED_FEATURES].copy()
+
+# Handle TotalCharges (often has empty strings " ")
+if 'TotalCharges' in X.columns:
+    X['TotalCharges'] = pd.to_numeric(X['TotalCharges'], errors='coerce')
+    X['TotalCharges'] = X['TotalCharges'].fillna(0)
 
 y = df[TARGET_COLUMN].map({'Yes': 1, 'No': 0})
-# Fallback if mapping failed
+# Fallback if values are not Yes/No
 if y.isnull().any():
     y = df[TARGET_COLUMN].astype('category').cat.codes
 
-# Force consistency: Select only the features we expect
-# This prevents the '20 columns vs 5 columns' error
-missing_feats = [col for col in SELECTED_FEATURES if col not in df.columns]
-if missing_feats:
-    raise ValueError(f"Dataset missing required features: {missing_feats}")
-
-X = df[SELECTED_FEATURES].copy()
-
-# Handle TotalCharges if it's a string (common in Telco dataset)
-if X['TotalCharges'].dtype == 'object':
-    X['TotalCharges'] = pd.to_numeric(X['TotalCharges'], errors='coerce')
-
-# Identify Feature Types dynamically
+# --- 4. Identify Types ---
 numeric_features = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
 categorical_features = X.select_dtypes(include=['object', 'category']).columns.tolist()
 
-print(f"Training with features: {list(X.columns)}")
+print(f"Training with: {list(X.columns)}")
 
-# --- 3. Build Pipeline ---
+# --- 5. Build & Train Pipeline ---
 numeric_transformer = Pipeline(steps=[
     ('imputer', SimpleImputer(strategy='median')),
     ('scaler', StandardScaler())
@@ -95,11 +110,10 @@ clf = Pipeline(steps=[
     ('classifier', RandomForestClassifier(n_estimators=100, random_state=42))
 ])
 
-# --- 4. Train & Save ---
 clf.fit(X, y)
 joblib.dump(clf, MODEL_PATH)
 
-# Save metadata
+# Save Metadata
 with open(META_PATH, 'w') as f:
     json.dump({
         "feature_names": list(X.columns),
