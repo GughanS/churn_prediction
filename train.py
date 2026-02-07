@@ -41,25 +41,41 @@ else:
     print(f"DEBUG: Original columns in CSV: {list(df.columns)}")
 
 # --- 2. Smart Column Normalization ---
-# This fixes "Tenure" vs "tenure" mismatches
-df.columns = [c.strip() for c in df.columns] # Remove spaces
+# Specific mappings for the IBM Telco Dataset (which matches your logs)
+SPECIFIC_MAPPINGS = {
+    'Tenure Months': 'tenure',
+    'Monthly Charges': 'MonthlyCharges',
+    'Total Charges': 'TotalCharges',
+    'Payment Method': 'PaymentMethod',
+    'Churn Value': 'Churn'  # The IBM dataset uses 'Churn Value' (1/0) or 'Churn Label' (Yes/No)
+}
+
+# Apply specific renaming first
+df.rename(columns=SPECIFIC_MAPPINGS, inplace=True)
+
+# General cleanup: Remove internal spaces for other potential matches if needed
+# (e.g. "Monthly Charges" -> "MonthlyCharges" if not caught above)
+df.columns = [c.replace(' ', '') for c in df.columns]
+
 col_map = {c.lower(): c for c in df.columns}
 
-# Fix Features
+# Verify Features exist (case-insensitive fallback)
 for req in REQUIRED_FEATURES:
     if req not in df.columns:
-        # Check if it exists in a different case
         if req.lower() in col_map:
             actual_name = col_map[req.lower()]
             print(f"[INFO] Renaming '{actual_name}' to '{req}'")
             df.rename(columns={actual_name: req}, inplace=True)
 
-# Fix Target
+# Verify Target
 if TARGET_COLUMN not in df.columns:
     if TARGET_COLUMN.lower() in col_map:
         actual_name = col_map[TARGET_COLUMN.lower()]
-        print(f"[INFO] Renaming target '{actual_name}' to '{TARGET_COLUMN}'")
         df.rename(columns={actual_name: TARGET_COLUMN}, inplace=True)
+    # Check for 'ChurnLabel' since we stripped spaces
+    elif 'ChurnLabel' in df.columns:
+         print(f"[INFO] Using 'ChurnLabel' as target")
+         df.rename(columns={'ChurnLabel': TARGET_COLUMN}, inplace=True)
 
 # --- 3. Final Validation ---
 missing_feats = [col for col in REQUIRED_FEATURES if col not in df.columns]
@@ -76,10 +92,18 @@ if 'TotalCharges' in X.columns:
     X['TotalCharges'] = pd.to_numeric(X['TotalCharges'], errors='coerce')
     X['TotalCharges'] = X['TotalCharges'].fillna(0)
 
-y = df[TARGET_COLUMN].map({'Yes': 1, 'No': 0})
-# Fallback if values are not Yes/No
-if y.isnull().any():
-    y = df[TARGET_COLUMN].astype('category').cat.codes
+# Handle Target Mapping
+# If the target is already numeric (0/1), use it. If it's Yes/No, map it.
+print(f"Target column unique values: {df[TARGET_COLUMN].unique()}")
+
+if df[TARGET_COLUMN].dtype == 'object':
+    y = df[TARGET_COLUMN].map({'Yes': 1, 'No': 0, 1: 1, 0: 0})
+    # Fallback for unexpected strings
+    if y.isnull().any():
+        print("[WARN] Target contained unknown values. forcing categorical codes.")
+        y = df[TARGET_COLUMN].astype('category').cat.codes
+else:
+    y = df[TARGET_COLUMN]
 
 # --- 4. Identify Types ---
 numeric_features = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
