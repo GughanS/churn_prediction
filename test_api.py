@@ -1,4 +1,11 @@
+import sys
+import os
 from fastapi.testclient import TestClient
+
+# Ensure the root directory is in sys.path so we can import 'src'
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# Explicitly import from src.app since you confirmed it is inside src/
 from src.app import app
 
 client = TestClient(app)
