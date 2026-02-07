@@ -13,7 +13,7 @@ import os
 DATA_PATH = './data/churn.csv'
 MODEL_PATH = 'model.pkl'
 META_PATH = 'model_features.json'
-TARGET_COLUMN = 'Churn'
+TARGET_COLUMN = 'Churn Value'
 
 # Define the exact features we want to use (Validation consistency)
 SELECTED_FEATURES = [
