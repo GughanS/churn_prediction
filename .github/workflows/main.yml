@@ -1,10 +1,15 @@
 name: CI/CD for Churn Prediction MLOps
 
-on: [push]
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    
     steps:
     - uses: actions/checkout@v3
 
@@ -18,27 +23,23 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
+    # Generate the model artifacts so the API can load them during testing
+    - name: Train Model
+      run: python train.py
+
+    # FIX: Use 'python -m pytest' to avoid "command not found" errors
+    # This automatically finds 'test_api.py' in the root folder
     - name: Run unit tests
-      run: |
-        pytest tests
+      run: python -m pytest
 
     - name: Build Docker image
       run: |
         docker build -t churn-api .
 
-    - name: Log in to registry
-      run: echo ${{ secrets.REGISTRY_PASSWORD }} | docker login ${{ secrets.REGISTRY_URL }} -u ${{ secrets.REGISTRY_USER }} --password-stdin
-      env:
-        REGISTRY_URL: ${{ secrets.REGISTRY_URL }}
-        REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
-        REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
-
-    - name: Push Docker image
-      run: |
-        docker tag churn-api ${{ secrets.REGISTRY_URL }}/churn-api:latest
-        docker push ${{ secrets.REGISTRY_URL }}/churn-api:latest
-
-    - name: Deploy to cloud service
-      run: |
-        # Replace below command with actual cloud restart/deploy
-        echo 'Deploy/restart the service here.'
+    # - name: Log in to registry
+    #   run: echo ${{ secrets.REGISTRY_PASSWORD }} | docker login ${{ secrets.REGISTRY_URL }} -u ${{ secrets.REGISTRY_USER }} --password-stdin
+    # 
+    # - name: Push Docker image
+    #   run: |
+    #     docker tag churn-api ${{ secrets.REGISTRY_URL }}/churn-api:latest
+    #     docker push ${{ secrets.REGISTRY_URL }}/churn-api:latest
