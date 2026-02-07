@@ -6,4 +6,4 @@ fastapi
 uvicorn
 pydantic
 pytest
-httpx
+httpx<0.28.0
