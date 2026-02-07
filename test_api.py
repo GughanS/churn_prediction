@@ -4,11 +4,14 @@ from src.app import app
 client = TestClient(app)
 
 def test_root_endpoint():
+    """Check if the API is alive (HTML response)."""
     response = client.get("/")
     assert response.status_code == 200
-    assert response.json()["status"] == "alive"
+    # FIX: Check text content instead of JSON because the root returns HTML now
+    assert "Churn API is Online" in response.text
 
 def test_prediction_endpoint():
+    """Check if the model returns a valid prediction."""
     payload = {
         "features": {
             "tenure": 12,
@@ -21,7 +24,7 @@ def test_prediction_endpoint():
     
     response = client.post("/predict", json=payload)
     
-    # Check status code, AND print the error message if it fails
+    # Assertions
     assert response.status_code == 200, f"Request failed: {response.text}"
     
     data = response.json()
